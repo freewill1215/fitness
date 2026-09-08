@@ -36,6 +36,12 @@ enum Commands {
         /// Target weight in lbs (omit to show current goal)
         weight: Option<f32>,
     },
+    /// Show daily weight history
+    History {
+        /// Number of entries to show (default: all)
+        #[arg(short, long)]
+        limit: Option<usize>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -188,6 +194,26 @@ fn cmd_report(weeks: usize, entries: &[Entry], goal: Option<f32>) {
     }
 }
 
+fn cmd_history(limit: Option<usize>, entries: &[Entry]) {
+    if entries.is_empty() {
+        println!("No entries yet. Use `fitness log <weight>` to start.");
+        return;
+    }
+
+    let start_weight = entries.first().unwrap().weight;
+    let shown: Vec<_> = match limit {
+        Some(n) => entries.iter().rev().take(n).collect::<Vec<_>>().into_iter().rev().collect(),
+        None => entries.iter().collect(),
+    };
+
+    println!("{:<12} {:>8} {:>8}", "Date", "Weight", "Δ Start");
+    println!("{}", "─".repeat(30));
+    for e in shown {
+        println!("{:<12} {:>8.1} {:>8}", e.date, e.weight, format!("{:+.1}", e.weight - start_weight));
+    }
+    println!("\n{} total entries", entries.len());
+}
+
 fn cmd_import(file: &str, entries: &mut Vec<Entry>) {
     use calamine::{open_workbook, DataType, Reader, Xlsx};
 
@@ -263,6 +289,9 @@ fn main() {
         }
         Commands::Goal { weight } => {
             cmd_goal(weight);
+        }
+        Commands::History { limit } => {
+            cmd_history(limit, &entries);
         }
     }
 }
