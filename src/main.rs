@@ -42,6 +42,11 @@ enum Commands {
         #[arg(short, long)]
         limit: Option<usize>,
     },
+    /// Delete a weight entry by date
+    Delete {
+        /// Date in YYYY-MM-DD format (default: today)
+        date: Option<String>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -214,6 +219,20 @@ fn cmd_history(limit: Option<usize>, entries: &[Entry]) {
     println!("\n{} total entries", entries.len());
 }
 
+fn cmd_delete(date: Option<String>, entries: &mut Vec<Entry>) {
+    let date = match date {
+        Some(s) => NaiveDate::parse_from_str(&s, "%Y-%m-%d").expect("Date must be YYYY-MM-DD"),
+        None => Local::now().date_naive(),
+    };
+
+    if let Some(pos) = entries.iter().position(|e| e.date == date) {
+        let removed = entries.remove(pos);
+        println!("Deleted {} lbs on {}", removed.weight, removed.date);
+    } else {
+        println!("No entry found for {}", date);
+    }
+}
+
 fn cmd_import(file: &str, entries: &mut Vec<Entry>) {
     use calamine::{open_workbook, DataType, Reader, Xlsx};
 
@@ -292,6 +311,10 @@ fn main() {
         }
         Commands::History { limit } => {
             cmd_history(limit, &entries);
+        }
+        Commands::Delete { date } => {
+            cmd_delete(date, &mut entries);
+            save(&entries);
         }
     }
 }
