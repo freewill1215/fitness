@@ -31,6 +31,11 @@ enum Commands {
     Import {
         file: String,
     },
+    /// Set or show the goal weight
+    Goal {
+        /// Target weight in lbs (omit to show current goal)
+        weight: Option<f32>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -39,11 +44,42 @@ struct Entry {
     weight: f32,
 }
 
-fn data_path() -> PathBuf {
+fn data_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let dir = PathBuf::from(home).join(".local/share/fitness");
     std::fs::create_dir_all(&dir).ok();
-    dir.join("weights.json")
+    dir
+}
+
+fn data_path() -> PathBuf {
+    data_dir().join("weights.json")
+}
+
+fn goal_path() -> PathBuf {
+    data_dir().join("goal.txt")
+}
+
+fn load_goal() -> Option<f32> {
+    std::fs::read_to_string(goal_path())
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+}
+
+fn save_goal(weight: f32) {
+    std::fs::write(goal_path(), weight.to_string()).unwrap();
+}
+
+fn cmd_goal(weight: Option<f32>) {
+    match weight {
+        Some(w) => {
+            save_goal(w);
+            println!("Goal set to {:.1} lbs", w);
+        }
+        None => match load_goal() {
+            Some(g) => println!("Current goal: {:.1} lbs", g),
+            None => println!("No goal set. Use `fitness goal <weight>` to set one."),
+        },
+    }
 }
 
 fn load() -> Vec<Entry> {
@@ -84,7 +120,7 @@ fn cmd_log(weight: f32, date: Option<String>, entries: &mut Vec<Entry>) {
     }
 }
 
-fn cmd_report(weeks: usize, entries: &[Entry]) {
+fn cmd_report(weeks: usize, entries: &[Entry], goal: Option<f32>) {
     if entries.is_empty() {
         println!("No entries yet. Use `fitness log <weight>` to start.");
         return;
@@ -138,11 +174,17 @@ fn cmd_report(weeks: usize, entries: &[Entry]) {
         rate
     );
 
-    if rate < 0.0 {
-        let weeks_remaining = (240.0 - current_min) / rate;
-        let goal_date =
-            Local::now().date_naive() + Duration::days((weeks_remaining * 7.0) as i64);
-        println!("At this rate: 240 lbs by ~{}", goal_date);
+    if let Some(g) = goal {
+        let remaining = g - current_min;
+        println!("Goal:     {:.1} lbs  ({:+.1} to go)", g, remaining);
+        if rate < 0.0 && remaining < 0.0 {
+            let weeks_remaining = remaining / rate;
+            let goal_date =
+                Local::now().date_naive() + Duration::days((weeks_remaining * 7.0) as i64);
+            println!("At this rate: goal by ~{}", goal_date);
+        }
+    } else if rate < 0.0 {
+        println!("(Set a goal with `fitness goal <weight>`)");
     }
 }
 
@@ -213,11 +255,14 @@ fn main() {
             save(&entries);
         }
         Commands::Report { weeks } => {
-            cmd_report(weeks, &entries);
+            cmd_report(weeks, &entries, load_goal());
         }
         Commands::Import { file } => {
             cmd_import(&file, &mut entries);
             save(&entries);
+        }
+        Commands::Goal { weight } => {
+            cmd_goal(weight);
         }
     }
 }
