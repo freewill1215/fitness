@@ -1,9 +1,12 @@
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+mod data;
+mod web;
 
-use chrono::{Datelike, Duration, Local, NaiveDate};
+use std::collections::BTreeMap;
+
+use chrono::{Duration, Local, NaiveDate};
 use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
+
+use data::{load, load_goal, save, save_goal, week_monday, Entry};
 
 #[derive(Parser)]
 #[command(name = "fitness", about = "Weight tracking CLI")]
@@ -47,68 +50,12 @@ enum Commands {
         /// Date in YYYY-MM-DD format (default: today)
         date: Option<String>,
     },
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct Entry {
-    date: NaiveDate,
-    weight: f32,
-}
-
-fn data_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let dir = PathBuf::from(home).join(".local/share/fitness");
-    std::fs::create_dir_all(&dir).ok();
-    dir
-}
-
-fn data_path() -> PathBuf {
-    data_dir().join("weights.json")
-}
-
-fn goal_path() -> PathBuf {
-    data_dir().join("goal.txt")
-}
-
-fn load_goal() -> Option<f32> {
-    std::fs::read_to_string(goal_path())
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-}
-
-fn save_goal(weight: f32) {
-    std::fs::write(goal_path(), weight.to_string()).unwrap();
-}
-
-fn cmd_goal(weight: Option<f32>) {
-    match weight {
-        Some(w) => {
-            save_goal(w);
-            println!("Goal set to {:.1} lbs", w);
-        }
-        None => match load_goal() {
-            Some(g) => println!("Current goal: {:.1} lbs", g),
-            None => println!("No goal set. Use `fitness goal <weight>` to set one."),
-        },
-    }
-}
-
-fn load() -> Vec<Entry> {
-    let path = data_path();
-    if !path.exists() {
-        return vec![];
-    }
-    let text = std::fs::read_to_string(path).unwrap_or_default();
-    serde_json::from_str(&text).unwrap_or_default()
-}
-
-fn save(entries: &[Entry]) {
-    let path = data_path();
-    std::fs::write(path, serde_json::to_string_pretty(entries).unwrap()).unwrap();
-}
-
-fn week_monday(date: NaiveDate) -> NaiveDate {
-    date - Duration::days(date.weekday().num_days_from_monday() as i64)
+    /// Start the web interface
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+    },
 }
 
 fn excel_serial_to_date(serial: i64) -> Option<NaiveDate> {
@@ -173,8 +120,7 @@ fn cmd_report(weeks: usize, entries: &[Entry], goal: Option<f32>) {
         .unwrap_or(last_entry.weight);
 
     let total_lost = current_min - start_weight;
-    let num_weeks = by_week.len() as f32;
-    let rate = total_lost / num_weeks;
+    let rate = total_lost / by_week.len() as f32;
 
     println!("Start:    {:.1} lbs  ({})", start_weight, start_date);
     println!("Current:  {:.1} lbs  ({})", last_entry.weight, last_entry.date);
@@ -207,14 +153,26 @@ fn cmd_history(limit: Option<usize>, entries: &[Entry]) {
 
     let start_weight = entries.first().unwrap().weight;
     let shown: Vec<_> = match limit {
-        Some(n) => entries.iter().rev().take(n).collect::<Vec<_>>().into_iter().rev().collect(),
+        Some(n) => entries
+            .iter()
+            .rev()
+            .take(n)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect(),
         None => entries.iter().collect(),
     };
 
     println!("{:<12} {:>8} {:>8}", "Date", "Weight", "Δ Start");
     println!("{}", "─".repeat(30));
     for e in shown {
-        println!("{:<12} {:>8.1} {:>8}", e.date, e.weight, format!("{:+.1}", e.weight - start_weight));
+        println!(
+            "{:<12} {:>8.1} {:>8}",
+            e.date,
+            e.weight,
+            format!("{:+.1}", e.weight - start_weight)
+        );
     }
     println!("\n{} total entries", entries.len());
 }
@@ -230,6 +188,19 @@ fn cmd_delete(date: Option<String>, entries: &mut Vec<Entry>) {
         println!("Deleted {} lbs on {}", removed.weight, removed.date);
     } else {
         println!("No entry found for {}", date);
+    }
+}
+
+fn cmd_goal(weight: Option<f32>) {
+    match weight {
+        Some(w) => {
+            save_goal(w);
+            println!("Goal set to {:.1} lbs", w);
+        }
+        None => match load_goal() {
+            Some(g) => println!("Current goal: {:.1} lbs", g),
+            None => println!("No goal set. Use `fitness goal <weight>` to set one."),
+        },
     }
 }
 
@@ -287,34 +258,46 @@ fn cmd_import(file: &str, entries: &mut Vec<Entry>) {
     }
 
     entries.sort_by_key(|e| e.date);
-    println!("Imported {} entries ({} skipped as duplicates)", imported, skipped);
+    println!(
+        "Imported {} entries ({} skipped as duplicates)",
+        imported, skipped
+    );
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
-    let mut entries = load();
 
     match cli.command {
-        Commands::Log { weight, date } => {
-            cmd_log(weight, date, &mut entries);
-            save(&entries);
+        Commands::Serve { port } => {
+            web::serve(port).await;
         }
-        Commands::Report { weeks } => {
-            cmd_report(weeks, &entries, load_goal());
-        }
-        Commands::Import { file } => {
-            cmd_import(&file, &mut entries);
-            save(&entries);
-        }
-        Commands::Goal { weight } => {
-            cmd_goal(weight);
-        }
-        Commands::History { limit } => {
-            cmd_history(limit, &entries);
-        }
-        Commands::Delete { date } => {
-            cmd_delete(date, &mut entries);
-            save(&entries);
+        cmd => {
+            let mut entries = load();
+            match cmd {
+                Commands::Log { weight, date } => {
+                    cmd_log(weight, date, &mut entries);
+                    save(&entries);
+                }
+                Commands::Report { weeks } => {
+                    cmd_report(weeks, &entries, load_goal());
+                }
+                Commands::Import { file } => {
+                    cmd_import(&file, &mut entries);
+                    save(&entries);
+                }
+                Commands::Goal { weight } => {
+                    cmd_goal(weight);
+                }
+                Commands::History { limit } => {
+                    cmd_history(limit, &entries);
+                }
+                Commands::Delete { date } => {
+                    cmd_delete(date, &mut entries);
+                    save(&entries);
+                }
+                Commands::Serve { .. } => unreachable!(),
+            }
         }
     }
 }

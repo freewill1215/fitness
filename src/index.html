@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fitness Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+    header {
+      background: #1a1a2e;
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; }
+
+    main {
+      max-width: 900px;
+      margin: 1.5rem auto;
+      padding: 0 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #888;
+      margin-bottom: 1rem;
+    }
+
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.75rem;
+    }
+    .stat { text-align: center; }
+    .stat-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #aaa;
+      margin-bottom: 0.2rem;
+    }
+    .stat-value { font-size: 1.4rem; font-weight: 700; }
+    .green { color: #16a34a; }
+    .red { color: #dc2626; }
+
+    /* Chart */
+    .chart-wrap { position: relative; height: 280px; }
+
+    /* Forms */
+    .form-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .field label { font-size: 0.8rem; font-weight: 500; color: #555; }
+    input[type="number"], input[type="date"] {
+      padding: 0.45rem 0.7rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      width: 130px;
+      outline: none;
+    }
+    input:focus { border-color: #6366f1; }
+    .btn {
+      padding: 0.45rem 1rem;
+      background: #1a1a2e;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    .btn:hover { background: #2d2d5e; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .hint {
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-top: 0.5rem;
+      min-height: 1.2em;
+    }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead th {
+      text-align: left;
+      padding: 0.4rem 0.5rem;
+      border-bottom: 2px solid #f0f0f0;
+      font-weight: 600;
+      color: #999;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+    tbody td { padding: 0.45rem 0.5rem; border-bottom: 1px solid #f7f7f7; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fafafa; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Fitness Tracker</h1>
+  </header>
+  <main>
+
+    <div class="card">
+      <h2>Summary</h2>
+      <div class="stats" id="stats">
+        <p style="color:#aaa;font-size:.875rem">Loading…</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Weight Trend</h2>
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Log Weight</h2>
+      <div class="form-row">
+        <div class="field">
+          <label>Weight (lbs)</label>
+          <input type="number" id="log-weight" step="0.1" placeholder="254.0" style="width:110px">
+        </div>
+        <div class="field">
+          <label>Date</label>
+          <input type="date" id="log-date">
+        </div>
+        <button class="btn" onclick="logWeight()">Log</button>
+      </div>
+      <p class="hint" id="log-hint"></p>
+    </div>
+
+    <div class="card">
+      <h2>Goal</h2>
+      <div class="form-row">
+        <div class="field">
+          <label>Target (lbs)</label>
+          <input type="number" id="goal-weight" step="0.1" placeholder="240.0" style="width:110px">
+        </div>
+        <button class="btn" onclick="setGoal()">Set Goal</button>
+      </div>
+      <p class="hint" id="goal-hint"></p>
+    </div>
+
+    <div class="card">
+      <h2>History</h2>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Weight</th><th>Δ Start</th><th></th></tr>
+        </thead>
+        <tbody id="history-body">
+          <tr><td colspan="4" style="color:#aaa">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <script>
+    let chart = null;
+
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('log-date').value = today;
+
+    async function fetchReport() {
+      const res = await fetch('/api/report');
+      const r = await res.json();
+      renderStats(r);
+      renderChart(r);
+      renderHistory(r.entries);
+      if (r.goal) document.getElementById('goal-weight').value = r.goal;
+    }
+
+    function fmt(n, decimals = 1) {
+      return n == null ? '—' : n.toFixed(decimals);
+    }
+
+    function renderStats(r) {
+      const el = document.getElementById('stats');
+      if (!r.current_weight) {
+        el.innerHTML = '<p style="color:#aaa;font-size:.875rem">No entries yet.</p>';
+        return;
+      }
+      const lost = r.total_lost ?? 0;
+      const lostCls = lost < 0 ? 'green' : lost > 0 ? 'red' : '';
+      const sign = n => n >= 0 ? '+' + fmt(n) : fmt(n);
+
+      let html = `
+        <div class="stat"><div class="stat-label">Start</div><div class="stat-value">${fmt(r.start_weight)}</div></div>
+        <div class="stat"><div class="stat-label">Current</div><div class="stat-value">${fmt(r.current_weight)}</div></div>
+        <div class="stat"><div class="stat-label">Lost</div><div class="stat-value ${lostCls}">${sign(lost)}</div></div>
+        <div class="stat"><div class="stat-label">lbs/week</div><div class="stat-value">${fmt(r.rate, 2)}</div></div>
+      `;
+      if (r.goal != null) {
+        const toGo = r.goal - r.current_weight;
+        const toCls = toGo < 0 ? 'green' : '';
+        html += `
+          <div class="stat"><div class="stat-label">Goal</div><div class="stat-value">${fmt(r.goal)}</div></div>
+          <div class="stat"><div class="stat-label">To Go</div><div class="stat-value ${toCls}">${sign(toGo)}</div></div>
+        `;
+        if (r.goal_date) html += `
+          <div class="stat"><div class="stat-label">Est. Date</div><div class="stat-value" style="font-size:1rem">${r.goal_date}</div></div>
+        `;
+      }
+      el.innerHTML = html;
+    }
+
+    function renderChart(r) {
+      if (chart) { chart.destroy(); chart = null; }
+      if (!r.entries || r.entries.length === 0) return;
+
+      const ctx = document.getElementById('chart').getContext('2d');
+
+      const dailyData = r.entries.map(e => ({ x: e.date, y: e.weight }));
+      const weeklyData = r.weekly.map(w => ({ x: w.week, y: w.min }));
+
+      const datasets = [
+        {
+          label: 'Daily',
+          data: dailyData,
+          borderColor: '#6366f1',
+          backgroundColor: '#6366f122',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.2,
+          fill: true,
+        },
+        {
+          label: 'Weekly Min',
+          data: weeklyData,
+          borderColor: '#16a34a',
+          backgroundColor: 'transparent',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          borderWidth: 2,
+          tension: 0.2,
+        },
+      ];
+
+      if (r.goal != null) {
+        const first = r.entries[0].date;
+        const last = r.goal_date ?? r.entries[r.entries.length - 1].date;
+        datasets.push({
+          label: 'Goal',
+          data: [{ x: first, y: r.goal }, { x: last, y: r.goal }],
+          borderColor: '#f59e0b',
+          borderDash: [6, 4],
+          pointRadius: 0,
+          borderWidth: 1.5,
+          tension: 0,
+        });
+      }
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: { datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'week', tooltipFormat: 'yyyy-MM-dd' },
+              grid: { color: '#f0f0f0' },
+            },
+            y: {
+              grid: { color: '#f0f0f0' },
+              ticks: { callback: v => v + ' lbs' },
+            },
+          },
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} lbs`,
+              },
+            },
+          },
+          interaction: { mode: 'nearest', intersect: false },
+        },
+      });
+    }
+
+    function renderHistory(entries) {
+      const tbody = document.getElementById('history-body');
+      if (!entries || entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#aaa">No entries yet.</td></tr>';
+        return;
+      }
+      const startWeight = entries[0].weight;
+      tbody.innerHTML = [...entries].reverse().map(e => {
+        const delta = e.weight - startWeight;
+        const cls = delta < 0 ? 'green' : delta > 0 ? 'red' : '';
+        const sign = delta >= 0 ? '+' : '';
+        return `<tr>
+          <td>${e.date}</td>
+          <td>${e.weight.toFixed(1)}</td>
+          <td class="${cls}">${sign}${delta.toFixed(1)}</td>
+          <td><button class="btn btn-danger" style="padding:.25rem .6rem;font-size:.75rem" onclick="deleteEntry('${e.date}')">✕</button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    async function logWeight() {
+      const weight = parseFloat(document.getElementById('log-weight').value);
+      const date = document.getElementById('log-date').value || null;
+      if (!weight) { hint('log-hint', 'Enter a weight.'); return; }
+      const res = await fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weight, date }),
+      });
+      if (res.ok) {
+        hint('log-hint', `Logged ${weight} lbs on ${date ?? today}`);
+        fetchReport();
+      } else {
+        hint('log-hint', 'Error logging weight.');
+      }
+    }
+
+    async function setGoal() {
+      const weight = parseFloat(document.getElementById('goal-weight').value);
+      if (!weight) { hint('goal-hint', 'Enter a goal weight.'); return; }
+      const res = await fetch('/api/goal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weight }),
+      });
+      if (res.ok) {
+        hint('goal-hint', `Goal set to ${weight} lbs`);
+        fetchReport();
+      }
+    }
+
+    async function deleteEntry(date) {
+      if (!confirm(`Delete entry for ${date}?`)) return;
+      const res = await fetch(`/api/entries/${date}`, { method: 'DELETE' });
+      if (res.ok) fetchReport();
+    }
+
+    function hint(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      setTimeout(() => { el.textContent = ''; }, 3000);
+    }
+
+    fetchReport();
+  </script>
+</body>
+</html>
