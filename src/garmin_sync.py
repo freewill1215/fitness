@@ -48,7 +48,7 @@ def main():
             email, password,
             prompt_mfa=lambda: input("Garmin MFA code: "),
         )
-        client.login(tokenstore_path=str(TOKEN_FILE))
+        client.login(tokenstore=str(TOKEN_FILE))
     except garminconnect.GarminConnectAuthenticationError as e:
         print(f"Authentication failed: {e}")
         sys.exit(1)
