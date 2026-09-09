@@ -56,6 +56,29 @@ enum Commands {
         #[arg(short, long, default_value = "3000")]
         port: u16,
     },
+    /// Pull weight from Garmin Connect
+    Garmin {
+        /// Number of days to look back
+        #[arg(short, long, default_value = "90")]
+        days: u32,
+    },
+}
+
+const GARMIN_SYNC: &str = include_str!("garmin_sync.py");
+
+fn cmd_garmin(days: u32) {
+    let script = data::data_dir().join("garmin_sync.py");
+    std::fs::write(&script, GARMIN_SYNC).expect("Failed to write garmin_sync.py");
+
+    let status = std::process::Command::new("python3")
+        .arg(&script)
+        .arg(days.to_string())
+        .status()
+        .expect("Failed to run python3");
+
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
 }
 
 fn excel_serial_to_date(serial: i64) -> Option<NaiveDate> {
@@ -295,6 +318,9 @@ async fn main() {
                 Commands::Delete { date } => {
                     cmd_delete(date, &mut entries);
                     save(&entries);
+                }
+                Commands::Garmin { days } => {
+                    cmd_garmin(days);
                 }
                 Commands::Serve { .. } => unreachable!(),
             }
