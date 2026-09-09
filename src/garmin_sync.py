@@ -14,6 +14,7 @@ except ImportError:
     sys.exit(1)
 
 DATA_FILE = Path.home() / ".local/share/fitness/weights.json"
+TOKEN_FILE = Path.home() / ".local/share/fitness/garmin_tokens.json"
 KG_TO_LBS = 2.20462
 
 
@@ -43,8 +44,11 @@ def main():
 
     print("Connecting to Garmin Connect...")
     try:
-        client = garminconnect.Garmin(email, password)
-        client.login()
+        client = garminconnect.Garmin(
+            email, password,
+            prompt_mfa=lambda: input("Garmin MFA code: "),
+        )
+        client.login(tokenstore_path=str(TOKEN_FILE))
     except garminconnect.GarminConnectAuthenticationError as e:
         print(f"Authentication failed: {e}")
         sys.exit(1)
