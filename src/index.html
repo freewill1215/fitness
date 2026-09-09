@@ -141,13 +141,6 @@
     </div>
 
     <div class="card">
-      <h2>Weekly Progress</h2>
-      <div class="chart-wrap">
-        <canvas id="weekly-chart"></canvas>
-      </div>
-    </div>
-
-    <div class="card">
       <h2>Log Weight</h2>
       <div class="form-row">
         <div class="field">
@@ -191,7 +184,6 @@
 
   <script>
     let chart = null;
-    let weeklyChart = null;
 
     const today = new Date().toISOString().slice(0, 10);
     document.getElementById('log-date').value = today;
@@ -201,7 +193,6 @@
       const r = await res.json();
       renderStats(r);
       renderChart(r);
-      renderWeeklyChart(r);
       renderHistory(r.entries);
       if (r.goal) document.getElementById('goal-weight').value = r.goal;
     }
@@ -312,81 +303,6 @@
             },
           },
           interaction: { mode: 'nearest', intersect: false },
-        },
-      });
-    }
-
-    function renderWeeklyChart(r) {
-      if (weeklyChart) { weeklyChart.destroy(); weeklyChart = null; }
-      if (!r.weekly || r.weekly.length < 2) return;
-
-      const ctx = document.getElementById('weekly-chart').getContext('2d');
-      const weeks = r.weekly.slice(1); // skip first (no delta)
-
-      const labels = weeks.map(w => w.week);
-      const mins   = weeks.map(w => w.min);
-      const deltas = weeks.map(w => w.delta_week ?? 0);
-      const barColors = deltas.map(d => d < 0 ? '#16a34a' : '#dc2626');
-      const barBorders = deltas.map(d => d < 0 ? '#15803d' : '#b91c1c');
-
-      weeklyChart = new Chart(ctx, {
-        data: {
-          labels,
-          datasets: [
-            {
-              type: 'bar',
-              label: 'Week Δ (lbs)',
-              data: deltas,
-              backgroundColor: barColors,
-              borderColor: barBorders,
-              borderWidth: 1,
-              yAxisID: 'yDelta',
-              order: 2,
-            },
-            {
-              type: 'line',
-              label: 'Weekly Min',
-              data: mins,
-              borderColor: '#6366f1',
-              backgroundColor: 'transparent',
-              pointRadius: 4,
-              pointHoverRadius: 6,
-              borderWidth: 2,
-              tension: 0.2,
-              yAxisID: 'yMin',
-              order: 1,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { grid: { color: '#f0f0f0' } },
-            yMin: {
-              position: 'left',
-              grid: { color: '#f0f0f0' },
-              ticks: { callback: v => v + ' lbs' },
-            },
-            yDelta: {
-              position: 'right',
-              grid: { drawOnChartArea: false },
-              ticks: { callback: v => (v >= 0 ? '+' : '') + v.toFixed(1) },
-            },
-          },
-          plugins: {
-            legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
-            tooltip: {
-              callbacks: {
-                label: ctx => {
-                  const v = ctx.parsed.y;
-                  const sign = v >= 0 ? '+' : '';
-                  return ` ${ctx.dataset.label}: ${sign}${v.toFixed(1)} lbs`;
-                },
-              },
-            },
-          },
-          interaction: { mode: 'index', intersect: false },
         },
       });
     }
